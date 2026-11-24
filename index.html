@@ -12,13 +12,35 @@
   html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   main { width:100%; max-width:960px; margin:0 auto; padding:max(16px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 40px max(14px, env(safe-area-inset-left)); }
   h1 { font-size:20px; margin:4px 0 12px; }
-  textarea {
-    display:block; width:100%; min-height:96px; max-height:50vh; resize:vertical;
+  /* Поле = прозрачный textarea поверх <pre> с подсветкой; шрифт, отступы и переносы у них одинаковые */
+  .field { position:relative; background:var(--card); border-radius:12px; }
+  .field textarea, .field pre {
+    margin:0; width:100%; padding:12px; border:1px solid transparent; border-radius:12px;
     font:16px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; /* 16px — iOS не зумит поле при фокусе */
-    padding:12px; border-radius:12px; border:1px solid var(--line);
-    background:var(--card); color:var(--text); word-break:break-all; overflow-wrap:anywhere;
+    letter-spacing:0; white-space:pre-wrap; word-break:break-all; overflow-wrap:anywhere; tab-size:2;
   }
-  textarea:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:transparent; }
+  .field pre { position:absolute; inset:0; overflow:hidden; pointer-events:none; color:var(--text); }
+  .field textarea {
+    position:relative; display:block; min-height:96px; max-height:50vh; resize:vertical;
+    border-color:var(--line); background:transparent; color:transparent; caret-color:var(--text);
+  }
+  .field textarea::placeholder { color:var(--muted); }
+  .field textarea::selection { background:rgba(31,111,235,.28); color:transparent; }
+  .field textarea:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:transparent; }
+  /* Подсветка ссылки: база тусклая, каждая пара параметр=значение — своим бледным фоном */
+  .hl-base { color:var(--muted); }
+  .hl-sep { color:var(--muted); opacity:.7; }
+  .hl-p { border-radius:3px; }
+  .hl-k { color:var(--k); }
+  .hl-eq { color:var(--muted); }
+  .hl-p.c0 { background:hsla(210,80%,55%,var(--a)); --k:hsl(210,45%,var(--kl)); }
+  .hl-p.c1 { background:hsla(140,60%,45%,var(--a)); --k:hsl(140,35%,var(--kl)); }
+  .hl-p.c2 { background:hsla(30,90%,55%,var(--a));  --k:hsl(30,50%,var(--kl)); }
+  .hl-p.c3 { background:hsla(280,60%,60%,var(--a)); --k:hsl(280,35%,var(--kl)); }
+  .hl-p.c4 { background:hsla(350,75%,60%,var(--a)); --k:hsl(350,40%,var(--kl)); }
+  .hl-p.c5 { background:hsla(180,60%,45%,var(--a)); --k:hsl(180,35%,var(--kl)); }
+  :root { --a:.13; --kl:38%; }
+  @media (prefers-color-scheme: dark) { :root { --a:.2; --kl:72%; } }
   .buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0 6px; }
   button { font:inherit; font-size:16px; font-weight:600; min-height:48px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; padding:10px 12px; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
@@ -41,7 +63,10 @@
 <main>
   <h1>Проверка ссылок</h1>
 
-  <textarea id="url" rows="3" placeholder="Вставь ссылку: https://… или app://…" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+  <div class="field">
+    <pre id="hl" aria-hidden="true"></pre>
+    <textarea id="url" rows="3" placeholder="Вставь ссылку: https://… или app://…" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+  </div>
 
   <div class="buttons">
     <button id="go" class="primary">Перейти</button>
@@ -60,9 +85,39 @@
   var field = document.getElementById('url');
   var msg = document.getElementById('msg');
 
+  var hl = document.getElementById('hl');
+
+  function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  // base?key=value&key=value#hash → тусклая база, пары с цветным фоном
+  function highlight(text) {
+    if (!text) return '';
+    var q = text.indexOf('?');
+    var base = q < 0 ? text : text.slice(0, q);
+    var rest = q < 0 ? '' : text.slice(q + 1);
+    var hash = '', h = rest.indexOf('#');
+    if (h >= 0) { hash = rest.slice(h); rest = rest.slice(0, h); }
+    var out = '<span class="hl-base">' + esc(base) + '</span>';
+    if (q >= 0) {
+      out += '<span class="hl-sep">?</span>';
+      out += rest.split('&').map(function (pair, i) {
+        if (!pair) return '';
+        var e = pair.indexOf('=');
+        var inner = e < 0 ? '<span class="hl-k">' + esc(pair) + '</span>'
+          : '<span class="hl-k">' + esc(pair.slice(0, e)) + '</span><span class="hl-eq">=</span>' + esc(pair.slice(e + 1));
+        return '<span class="hl-p c' + (i % 6) + '">' + inner + '</span>';
+      }).join('<span class="hl-sep">&amp;</span>');
+    }
+    if (hash) out += '<span class="hl-base">' + esc(hash) + '</span>';
+    return out;
+  }
+
+  function paint() { hl.innerHTML = highlight(field.value) + '\n'; hl.scrollTop = field.scrollTop; }
+
   // Поле растёт по содержимому
-  function autosize() { field.style.height = 'auto'; field.style.height = Math.min(field.scrollHeight + 2, window.innerHeight * 0.5) + 'px'; }
+  function autosize() { field.style.height = 'auto'; field.style.height = Math.min(field.scrollHeight + 2, window.innerHeight * 0.5) + 'px'; paint(); }
   field.addEventListener('input', function () { msg.textContent = ''; autosize(); });
+  field.addEventListener('scroll', function () { hl.scrollTop = field.scrollTop; });
   window.addEventListener('resize', autosize);
 
   function clean(s) { return (s || '').replace(/\s+/g, ''); } // ссылки при копировании часто рвутся переносами
@@ -113,7 +168,7 @@
     if (!list.length) { var p = document.createElement('li'); p.className = 'empty'; p.textContent = 'Пока пусто'; ul.appendChild(p); return; }
     list.forEach(function (link) {
       var li = document.createElement('li');
-      var a = document.createElement('a'); a.href = link; var sp = document.createElement('span'); sp.textContent = link; a.appendChild(sp);
+      var a = document.createElement('a'); a.href = link; var sp = document.createElement('span'); sp.innerHTML = highlight(link); a.appendChild(sp);
       a.onclick = function (e) { e.preventDefault(); go(link); };
       var b = document.createElement('button'); b.textContent = 'В поле';
       b.onclick = function () { field.value = link; autosize(); field.focus(); };
