@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Проверка ссылок</title>
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --text:#1d1d1b; --muted:#6b6b66; --line:#dcdcd6; --accent:#1f6feb; --bad:#c4321c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141413; --card:#1f1f1d; --text:#ececea; --muted:#9a9a94; --line:#3a3a35; --accent:#4c8dff; --bad:#f0705b; } }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { width:100%; max-width:960px; margin:0 auto; padding:max(16px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 40px max(14px, env(safe-area-inset-left)); }
+  h1 { font-size:20px; margin:4px 0 12px; }
+  textarea {
+    display:block; width:100%; min-height:96px; max-height:50vh; resize:vertical;
+    font:16px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; /* 16px — iOS не зумит поле при фокусе */
+    padding:12px; border-radius:12px; border:1px solid var(--line);
+    background:var(--card); color:var(--text); word-break:break-all; overflow-wrap:anywhere;
+  }
+  textarea:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:transparent; }
+  .buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0 6px; }
+  button { font:inherit; font-size:16px; font-weight:600; min-height:48px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; padding:10px 12px; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:active { transform:scale(.98); }
+  .msg { min-height:20px; font-size:14px; color:var(--bad); margin:4px 0 0; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; margin:22px 0 8px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; gap:8px; align-items:stretch; margin-bottom:8px; }
+  li a {
+    flex:1; min-width:0; display:block; text-decoration:none; color:var(--text);
+    background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px;
+    font:13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; word-break:break-all;
+  }
+  li a span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  li button { flex:0 0 auto; min-height:0; font-size:13px; font-weight:500; padding:6px 10px; }
+  .empty { color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Проверка ссылок</h1>
+
+  <textarea id="url" rows="3" placeholder="Вставь ссылку: https://… или app://…" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+
+  <div class="buttons">
+    <button id="go" class="primary">Перейти</button>
+    <button id="pasteGo">Вставить и перейти</button>
+  </div>
+  <p class="msg" id="msg"></p>
+
+  <h2>Последние ссылки</h2>
+  <ul id="history"></ul>
+</main>
+
+<script>
+(function () {
+  var KEY = 'link_tester_history_v1';
+  var MAX = 3;
+  var field = document.getElementById('url');
+  var msg = document.getElementById('msg');
+
+  // Поле растёт по содержимому
+  function autosize() { field.style.height = 'auto'; field.style.height = Math.min(field.scrollHeight + 2, window.innerHeight * 0.5) + 'px'; }
+  field.addEventListener('input', function () { msg.textContent = ''; autosize(); });
+  window.addEventListener('resize', autosize);
+
+  function clean(s) { return (s || '').replace(/\s+/g, ''); } // ссылки при копировании часто рвутся переносами
+  function isLink(s) { return /^[a-z][a-z0-9+.\-]*:\/\/\S+$/i.test(s) || /^[a-z][a-z0-9+.\-]*:\/\/$/i.test(s); }
+
+  function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
+  function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} }
+
+  function remember(link) {
+    var list = load().filter(function (x) { return x !== link; });
+    list.unshift(link);
+    save(list.slice(0, MAX));
+    renderHistory();
+  }
+
+  function go(raw) {
+    var link = clean(raw);
+    if (!link) { msg.textContent = 'Поле пустое'; field.focus(); return; }
+    if (!isLink(link)) { msg.textContent = 'Не похоже на ссылку: нужна схема, например https:// или app://'; return; }
+    field.value = link; autosize();
+    remember(link);
+    window.location.href = link;
+  }
+
+  document.getElementById('go').onclick = function () { go(field.value); };
+
+  document.getElementById('pasteGo').onclick = function () {
+    msg.textContent = '';
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      msg.textContent = 'Браузер не даёт прочитать буфер. Вставь ссылку в поле вручную и нажми «Перейти».';
+      field.focus(); return;
+    }
+    navigator.clipboard.readText().then(function (text) {
+      field.value = clean(text); autosize();
+      go(text);
+    }, function () {
+      msg.textContent = 'Нет доступа к буферу. Вставь ссылку в поле вручную и нажми «Перейти».';
+      field.focus();
+    });
+  };
+
+  field.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(field.value); } });
+
+  function renderHistory() {
+    var ul = document.getElementById('history');
+    var list = load();
+    ul.innerHTML = '';
+    if (!list.length) { var p = document.createElement('li'); p.className = 'empty'; p.textContent = 'Пока пусто'; ul.appendChild(p); return; }
+    list.forEach(function (link) {
+      var li = document.createElement('li');
+      var a = document.createElement('a'); a.href = link; var sp = document.createElement('span'); sp.textContent = link; a.appendChild(sp);
+      a.onclick = function (e) { e.preventDefault(); go(link); };
+      var b = document.createElement('button'); b.textContent = 'В поле';
+      b.onclick = function () { field.value = link; autosize(); field.focus(); };
+      li.appendChild(a); li.appendChild(b); ul.appendChild(li);
+    });
+  }
+
+  renderHistory();
+  autosize();
+})();
+</script>
+</body>
+</html>
