@@ -168,7 +168,7 @@
     if (!list.length) { var p = document.createElement('li'); p.className = 'empty'; p.textContent = 'Пока пусто'; ul.appendChild(p); return; }
     list.forEach(function (link) {
       var li = document.createElement('li');
-      var a = document.createElement('a'); a.href = link; var sp = document.createElement('span'); sp.innerHTML = highlight(link); a.appendChild(sp);
+      var a = document.createElement('a'); a.href = link; var sp = document.createElement('span'); sp.textContent = link; a.appendChild(sp);
       a.onclick = function (e) { e.preventDefault(); go(link); };
       var b = document.createElement('button'); b.textContent = 'В поле';
       b.onclick = function () { field.value = link; autosize(); field.focus(); };
